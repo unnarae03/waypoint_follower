@@ -18,7 +18,7 @@ class WaypointExecutor(Node):
         self.bridge = CvBridge()
         self.image = None
         self.pose = None
-        self.create_subscription(Image, '/oak/rgb/image_raw', self.image_callback, 10)
+        self.create_subscription(Image, '/oakd/rgb/preview/image_raw', self.image_callback, 10)
         self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.pose_callback, 10)
 
     def image_callback(self, msg):
