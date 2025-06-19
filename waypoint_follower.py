@@ -60,8 +60,14 @@ class WaypointExecutor(Node):
         print(f'✅ {label} 도착 완료')
         return True
 
-    def save_image_and_pose(self, index):
-        time.sleep(1.0)
+    def save_image_and_pose(self, index, capture_delay=4.0):
+        """
+        index: 저장할 파일명 인덱스
+        capture_delay: 촬영 전 대기 시간 (초)
+        """
+        # 대기하여 로봇과 카메라 안정화
+        time.sleep(capture_delay)
+
         base_path = os.path.join(os.path.dirname(__file__), 'logs', 'images', 'current')
         os.makedirs(base_path, exist_ok=True)
 
@@ -99,14 +105,29 @@ def main():
     node = WaypointExecutor()
 
     index = 1
+    POSITION_THRESHOLD = 0.25  
     while True:
         pose = node.load_pose_from_yaml('config', f'waypoint{index}.yaml')
         if pose is None:
             break
-        if node.send_goal(pose, label=f'웨이포인트 {index}'):
-            node.save_image_and_pose(index)
+
+        # 웨이포인트 이동
+        node.send_goal(pose, label=f'웨이포인트 {index}')
+
+        # 현재 위치와 목표 위치 오차 계산
+        current = node.pose.pose.pose.position
+        dx = abs(current.x - pose['x'])
+        dy = abs(current.y - pose['y'])
+        if dx < POSITION_THRESHOLD and dy < POSITION_THRESHOLD:
+            print(f'✅ {index} 위치 도달 (오차: {dx:.2f}, {dy:.2f}) — 정상 캡처')
+        else:
+            print(f'⚠️ {index} 위치 오차 too large ({dx:.2f}, {dy:.2f}) — 경고 후 캡처')
+
+        # 항상 캡처
+        node.save_image_and_pose(index, capture_delay=4.0)
         index += 1
 
+    # 복귀는 기존대로 처리
     base_pose = node.load_pose_from_yaml('return_base', 'base.yaml')
     if base_pose:
         if node.send_goal(base_pose, label='복귀'):
