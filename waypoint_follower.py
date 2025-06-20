@@ -122,11 +122,19 @@ def main():
         dx = abs(current.x - pose['x'])
         dy = abs(current.y - pose['y'])
 
-        # 3) 오차 메시지 출력
+        # 3) 오차 메시지 출력 및 재시도 로직 추가
         if dx < POSITION_THRESHOLD and dy < POSITION_THRESHOLD:
             print(f'✅ {index} 위치 도달 (오차: {dx:.2f}, {dy:.2f}) — 정상 캡처')
         else:
-            print(f'⚠️ {index} 위치 오차 too large ({dx:.2f}, {dy:.2f}) — 경고 후 캡처')
+            print(f'⚠️ {index} 위치 오차 too large ({dx:.2f}, {dy:.2f}) — 재시도')
+            node.send_goal(pose, label=f'웨이포인트 {index} 재시도')
+            current = node.pose.pose.pose.position
+            dx2 = abs(current.x - pose['x'])
+            dy2 = abs(current.y - pose['y'])
+            if dx2 < POSITION_THRESHOLD and dy2 < POSITION_THRESHOLD:
+                print(f'✅ {index} 재시도 성공 (오차: {dx2:.2f}, {dy2:.2f})')
+            else:
+                print(f'⚠️ {index} 재시도 실패 (오차: {dx2:.2f}, {dy2:.2f}) — 경고 후 캡처')
 
         # 4) 항상 4초 대기 후 캡처
         node.save_image_and_pose(index, capture_delay=4.0)
