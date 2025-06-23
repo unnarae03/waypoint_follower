@@ -13,6 +13,7 @@ import math
 
 
 class WaypointExecutor(Node):
+
     def __init__(self):
         super().__init__('waypoint_executor')
         self.bridge = CvBridge()
@@ -35,6 +36,7 @@ class WaypointExecutor(Node):
             return yaml.safe_load(f)['pose']
 
     def send_goal(self, pose_dict, label=''):
+
         print(f'➡️ {label} 이동 시작')
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = 'map'
@@ -61,14 +63,9 @@ class WaypointExecutor(Node):
         return True
 
     def save_image_and_pose(self, index, capture_delay=4.0):
-        """
-        index: 파일명 인덱스
-        capture_delay: 촬영 전 대기 시간 (초)
-        """
-        # 1) 로봇·카메라 안정화 대기
+  
         time.sleep(capture_delay)
 
-        # 2) 이미지 콜백이 아직 안 왔으면 최대 1초 동안 spin
         wait_start = time.time()
         while self.image is None and time.time() - wait_start < 1.0:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -76,7 +73,7 @@ class WaypointExecutor(Node):
         base_path = os.path.join(os.path.dirname(__file__), 'logs', 'images', 'current')
         os.makedirs(base_path, exist_ok=True)
 
-        # 3) 이미지 저장 (무조건 시도)
+
         try:
             img = self.bridge.imgmsg_to_cv2(self.image, 'bgr8')
             cv2.imwrite(os.path.join(base_path, f'{index}.jpg'), img)
@@ -84,47 +81,57 @@ class WaypointExecutor(Node):
             print(f'⚠️ {index}.jpg 저장 실패: {e}')
 
         # 4) 포즈 저장
+
         pose_msg = self.pose.pose.pose
         q = pose_msg.orientation
         siny_cosp = 2 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
         theta = math.atan2(siny_cosp, cosy_cosp)
+
         pose_data = {
+
             'pose': {
                 'x': pose_msg.position.x,
                 'y': pose_msg.position.y,
                 'theta': theta
             }
+
         }
+
         yaml_path = os.path.join(base_path, f'{index}.yaml')
         with open(yaml_path, 'w') as f:
             yaml.dump(pose_data, f)
-
         print(f'💾 {index}.jpg / {index}.yaml 저장 완료')
 
-
 def main():
+
     rclpy.init()
     node = WaypointExecutor()
-
     index = 1
     POSITION_THRESHOLD = 0.25  # 허용 오차: 0.25m
+
     while True:
         pose = node.load_pose_from_yaml('config', f'waypoint{index}.yaml')
         if pose is None:
             break
 
         # 1) 웨이포인트 이동
+
         node.send_goal(pose, label=f'웨이포인트 {index}')
 
         # 2) 현재 위치와 목표 위치 오차 계산
+
         current = node.pose.pose.pose.position
         dx = abs(current.x - pose['x'])
         dy = abs(current.y - pose['y'])
 
+
+
         # 3) 오차 메시지 출력 및 재시도 로직 추가
+
         if dx < POSITION_THRESHOLD and dy < POSITION_THRESHOLD:
             print(f'✅ {index} 위치 도달 (오차: {dx:.2f}, {dy:.2f}) — 정상 캡처')
+
         else:
             print(f'⚠️ {index} 위치 오차 too large ({dx:.2f}, {dy:.2f}) — 재시도')
             node.send_goal(pose, label=f'웨이포인트 {index} 재시도')
@@ -136,15 +143,17 @@ def main():
             else:
                 print(f'⚠️ {index} 재시도 실패 (오차: {dx2:.2f}, {dy2:.2f}) — 경고 후 캡처')
 
-        # 4) 항상 4초 대기 후 캡처
+
+        time.sleep(2.0)
         node.save_image_and_pose(index, capture_delay=4.0)
+        time.sleep(2.0)
         index += 1
 
-    # 복귀는 기존대로 처리
     base_pose = node.load_pose_from_yaml('return_base', 'base.yaml')
     if base_pose:
-        if node.send_goal(base_pose, label='복귀'):
-            print('🏁 복귀 완료')
+        while not node.send_goal(base_pose, label='복귀'):
+            print('🔁 복귀 재시도 중...')
+        print('🏁 복귀 완료')
 
     node.destroy_node()
     rclpy.shutdown()
